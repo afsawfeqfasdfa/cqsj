@@ -1,0 +1,92 @@
+version: "3.8"
+
+# 传奇世界私服「data 网站环境」Docker 编排
+# 三服务: db(MySQL5.6) / web(Nginx+PHP5.6+Zend) / game(游戏服 C++)
+#
+# 网络:
+#   db / web  -> bridge 网络 cqsj (web 靠服务名 db 访问 MySQL)
+#   game      -> host 网络 (游戏服 loginAddr 要 bind 真实 LAN IP)
+#
+# 配置固化:
+#   关键配置文件全部用 bind mount 挂进容器, 宿主 build/ 里的版本就是初始状态,
+#   重建容器不会回退到镜像内的旧配置, 也不需要重新 build 镜像。
+
+services:
+  db:
+    image: mysql:5.6
+    container_name: cqsj_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: "<<DB_OR_GM_PASSWORD>>"
+    command: --character-set-server=utf8 --collation-server=utf8_general_ci
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "3306:3306"
+    networks:
+      - cqsj
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    container_name: cqsj_web
+    restart: always
+    depends_on:
+      - db
+    ports:
+      - "1515:1515"   # GM 站
+    volumes:
+      # 只挂 config.php: 启动时 /start.sh 读它的 CFG_SERVER_IP 再生成 version.php。
+      # version.php 不能单文件挂 —— sed -i 对 bind mount 的单个文件会报 Device or resource busy。
+      - ./build/web/wwwroot_game/games__/config.php:/www/wwwroot/game/games__/config.php
+      # version 目录整个挂载(目录内 rename 正常): 4 区服务器列表在这里维护
+      - ./build/web/wwwroot_game/games__/version:/www/wwwroot/game/games__/version
+      # GM 后台区服列表(4 区 + db 指向 db 服务)
+      - ./build/web/wwwroot_game/gm/user/config.php:/www/wwwroot/game/gm/user/config.php
+      # GM 登录页: 源码自带的 6 处 echo \"...\" 非法转义会让整页 Parse error, 已修
+      - ./build/web/wwwroot_game/gm/index.php:/www/wwwroot/game/gm/index.php
+      # GM 角色管理页: 连接串 DB 主机必须用服务名 db(bridge 网络下 127.0.0.1 连不到 MySQL)
+      - ./build/web/wwwroot_game/gm/roles.php:/www/wwwroot/game/gm/roles.php
+      # api 接口目录: notice/player_get/lucky/notice_update 等公告/查询接口,
+      # 改过的文案固化到这里, 重建容器不回退(目录挂载, 不遮蔽其他 api 文件)
+      - ./build/web/wwwroot_game/games__/api:/www/wwwroot/game/games__/api
+      # 启动脚本挂载, 修正可直接改宿主文件
+      - ./web/start.sh:/start.sh
+    # 共享宿主 PID/网络命名空间视图: roles.php 在线判断读 /proc/net/tcp,
+    # bridge 网络下看不到 game(host 网络)网关端口的 ESTABLISHED 连接, 会全员误报离线。
+    pid: "host"
+    networks:
+      - cqsj
+
+  game:
+    build:
+      context: .
+      dockerfile: game/Dockerfile
+    container_name: cqsj_game
+    restart: always
+    depends_on:
+      - db
+    # host 网络: 让游戏服像物理机部署一样 bind 到 <<LAN_IP>>
+    network_mode: host
+    # 每个 *_d 进程都会 mmap 一个 TSS(反外挂)共享内存文件到 /dev/shm。
+    # 现在只跑 2 区(6 个游戏进程), 256m 足够且有余量(日后若重开 802/803 也撑得住)。
+    # 之前 4 区用 512m; 机器内存紧张, 回落到 256m 省 RAM。
+    shm_size: 256m
+    environment:
+      DB_HOST: 127.0.0.1                 # host 网络无 docker DNS, 走宿主映射出来的 3306
+      GAME_HOST_IP: "<<LAN_IP>>"      # 飞牛 LAN IP, 客户端靠这个地址进游戏
+    volumes:
+      - ./game/entrypoint.sh:/entrypoint.sh:ro
+      - ./build/game/sbin/resource/config/gateway_cfg.lua:/data/sbin/resource/config/gateway_cfg.lua
+      - ./build/game/sbin/resource/config/session_cfg.lua:/data/sbin/resource/config/session_cfg.lua
+      # 4 区启动脚本(写死各区 GateID 尾号 0, entrypoint 不再 sed 它)
+      - ./game/start.sh:/data/sbin/linux/start.sh
+
+volumes:
+  db_data:
+
+networks:
+  cqsj:
+    driver: bridge

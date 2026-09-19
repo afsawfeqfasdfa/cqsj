@@ -1,0 +1,8 @@
+# 运行时日志（含支付日志，不入库）
+*.log
+build/web/wwwroot_game/gm/user/log/
+
+# 运行时 PID 文件
+*.pid
+
+# 说明：build/ 为部署配置与运行环境快照，整体入库。
