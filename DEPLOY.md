@@ -28,6 +28,12 @@
 - 内存:仅 web+db 约 1GB 足够;跑游戏服建议 ≥4GB
 - 开放端口:GM 站 `1515`,MySQL `3306`,游戏服 `20010-20059 / 2200-2230 / 2300-2330 / 2500-2530 / 3000-3030 / 3210`
 
+> ⚠️ **必须是 Linux,Windows / macOS 的 Docker Desktop 跑不了。**
+> `docker-compose.yml` 里 `game` 用了 `network_mode: host`(游戏服要 bind 真实 LAN IP),
+> `web` 用了 `pid: "host"`(读宿主 `/proc/net/tcp` 统计在线人数)。
+> Docker Desktop 的虚拟机后端**不支持 host 网络与 host PID 命名空间**,
+> `docker compose up` 会失败或行为异常。没 Linux 机器就用虚拟机/云服务器(桥接或 NAT 均可)。
+
 ---
 
 ## 3. 占位符替换(必做)
