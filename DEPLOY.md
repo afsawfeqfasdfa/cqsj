@@ -228,6 +228,41 @@ build/game/libs/usr/lib64/mysql/libmysqlclient.so.18   # centos:7 镜像缺的 M
 > `build/game/libs/usr/lib64/mysql/` 目录**已存在**(内含 `README.md` 说明),
 > 所以即使还没备好这个 `.so`,`docker compose build` 也不会失败,只是游戏进程起不来。
 
+> **⚠️ 除了二进制,还缺 `sbin/resource/` 下的 `ai` `map` `script` 三个目录。**
+> 仓库里只带了 `resource/config`(配置),**没有游戏内容**(AI/地图/脚本),
+> 少了它们 `WorldFrame_d` 起不来或地图加载失败。必须从同一台机器一起拷。
+
+### 5.1.1 从已有机器迁移(实测命令)
+
+在**已有游戏服的机器**上打包(排除日志、pid,以及**排除 `resource/config`**——
+目标机那份的占位符已替换成本机 IP,被覆盖会把 IP 改回源机器的):
+
+```bash
+cd <源机>/build/game
+tar czf /tmp/cqsj_game.tgz \
+  --exclude='sbin/linux/*.log' --exclude='sbin/linux/*.pid*' \
+  --exclude='sbin/linux/nohup.out' \
+  sbin/linux sbin/resource/ai sbin/resource/map sbin/resource/script libs
+```
+
+传到目标机后:
+
+```bash
+cd <目标机>/build/game
+tar xzf /tmp/cqsj_game.tgz
+chmod +x sbin/linux/*_d sbin/linux/*.sh      # tar 不保留执行位,不 chmod 会 permission denied
+cp docker-compose.full.yml docker-compose.yml  # 面板包默认去掉了 game 服务
+docker compose up -d --build game
+```
+
+构建时 `ldconfig: xxx is not a symbolic link` 属**无害警告**;
+日志里 `127.0.0.1:10211 Connection refused` 也是**正常**(CenterServer 指向外网不可达)。
+
+> **⚠️ 迁移后第一件事:检查 `gateway_cfg.lua` 的 `connectAddr`。**
+> 这个字段**不会**被 entrypoint 重写,如果源机器配的是外网穿透端口(如 `:32124`),
+> 换机器后它会原样留着,而网关实际监听的是 `20020` → **客户端进不去,且没有任何报错**。
+> 正确值应为 `<本机IP>:20020`(800 区)/ `<本机IP>:20030`(801 区),与 `loginPort` 一致。
+
 ### 5.2 构建并启动
 
 ```bash
