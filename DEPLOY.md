@@ -80,6 +80,21 @@ grep -rl '<<' --include='*.yml' --include='*.php' --include='*.lua' --include='*
 
 ## 4. 方式 A:只跑 GM 网站 + 数据库(无需游戏服二进制)
 
+### 4.0 一键脚本(推荐)
+
+全新 Linux 主机上,一条命令搞定(自动装 Docker、克隆仓库、替换占位符、起 db+web):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/afsawfeqfasdfa/cqsj/main/quickstart.sh | sudo bash
+# 或手动指定 IP 与密码:
+#   sudo bash quickstart.sh 192.168.1.100 'YourStrongPass123'
+```
+
+脚本会把仓库克隆到 `/opt/cqsj`,随机生成一个数据库密码并打印,最后输出 GM 后台地址。
+想看它具体做了什么,直接读仓库根目录的 `quickstart.sh`(约 100 行,可离线审计)。
+
+### 4.1 手动步骤(飞牛 FnOS 见 4.2)
+
 ```bash
 # 1. 替换占位符(见第 3 节)
 # 2. 只启动 db 与 web,不构建 game
@@ -106,6 +121,82 @@ docker logs -f cqsj_web
 > ⚠️ 直接 `docker compose up -d` 会连 `game` 一起构建。构建本身**不会**失败
 > (`build/game/libs/` 已占位、`sbin/` 只有配置),但游戏进程起不来——
 > 没有 `*_d` 二进制时会反复重启。所以**没备好二进制就只起 db/web**。
+
+### 4.2 飞牛 FnOS 手动部署(一步步来)
+
+> 以下以**全新飞牛** `192.168.5.128` 为例。飞牛是 Debian 12 + Docker 28,完全满足第 2 节前置条件。
+
+**第 0 步 · 网页端准备(全新机必做)**
+
+| 操作 | 位置 |
+|---|---|
+| 装 Docker | 飞牛桌面 → **应用中心** → 搜 `Docker` → 安装 |
+| 开 SSH | **系统设置** → `SSH` / 开发者模式 → 打开(默认端口 `22`,全新机默认**关闭**) |
+
+验证 SSH 已开:`ssh adminn@192.168.5.128`(面板端口是 `5666`,别混)。
+
+**第 1 步 · 拉代码到 `/vol1/docker`**
+
+```bash
+sudo -i                                   # 飞牛的普通账号不在 docker 组,全程用 root
+mkdir -p /vol1/docker && cd /vol1/docker
+apt-get install -y git                    # 全新机可能没 git
+git clone --depth 1 https://github.com/afsawfeqfasdfa/cqsj.git
+cd cqsj
+```
+
+> `git clone` 不通时:在电脑浏览器打开仓库页 → `Code` → `Download ZIP`,
+> 用飞牛「文件管理」上传到 `/vol1/docker` 并解压,目录改名为 `cqsj` 即可,后续命令一样。
+
+**第 2 步 · 替换占位符(手动版)**
+
+```bash
+IP=192.168.5.128                 # 飞牛的局域网 IP
+PW='Cqsj@2026'                   # 自己设的数据库/GM 密码,记下来
+
+FILES=$(grep -rl '<<' --include='*.yml' --include='*.php' --include='*.lua' \
+        --include='*.xml' --include='*.sh' --include='*.sql' --include='*.py' \
+        --include='*.conf' --include='*.json' .)
+
+for ph in $(grep -rhoE '<<[A-Za-z0-9_]+>>' $FILES | sort -u); do
+  case "$ph" in
+    *IP*|*DOMAIN*) V="$IP" ;;      # 带 IP / DOMAIN 的填飞牛 IP
+    SSH_USER)      V=root  ;;
+    SSH_PORT)      V=22    ;;
+    *)             V="$PW" ;;      # 其余全是口令类,统一填密码
+  esac
+  PH="$ph" VAL="$V" perl -pi -e 's/\Q$ENV{PH}\E/$ENV{VAL}/g' $FILES
+done
+
+grep -rn '<<' --include='*.yml' --include='*.php' --include='*.lua' --include='*.xml' \
+     --include='*.sh' --include='*.sql' . | head    # 应无输出
+```
+
+用 `perl \Q...\E` 而非 `sed`,是因为密码里带 `&` `|` 会被 sed 当特殊字符吃掉。
+
+**第 3 步 · 启动 db + web**
+
+```bash
+docker compose up -d db web       # 只起这两个,game 没二进制不要起
+docker ps                         # 应看到 cqsj_db / cqsj_web 都是 Up
+docker logs -f cqsj_web           # 看到 version.php ip pinned to 192.168.5.128 即正常
+```
+
+首次会构建 web 镜像(centos:7 + PHP5.6 + ZendGuardLoader),约 3–8 分钟。
+
+**第 4 步 · 验收**
+
+```bash
+curl http://192.168.5.128:1515/games__/version/version.php   # 返回 JSON,ip 是 192.168.5.128
+docker exec cqsj_db mysql -uroot -p"$PW" -e "show databases;" # 有 longwen / longwen_name
+```
+
+浏览器打开 <http://192.168.5.128:1515/gm/gm.php> → 出现访问密码登录页即成功。
+
+**要不要跑游戏服?** 全新飞牛没有 `*_d` 二进制,只能到上一步为止。
+想跑全栈:把现有机器的 `build/game/sbin/linux/*_d` 与 `libmysqlclient.so.18` 拷到
+`/vol1/docker/cqsj/build/game/` 对应目录,再改 `docker-compose.yml` 的 `GAME_HOST_IP`
+(此时必须已是 `192.168.5.128`),然后 `docker compose up -d`,并放行 `20010-20059` 端口。
 
 ---
 
@@ -205,6 +296,7 @@ cqsj/
 ├── README.md               # 项目总览
 ├── DEPLOY.md               # 本文件
 ├── bootstrap.sh            # 从原始部署机拉取运行时/代码到 build/(需你有该机器权限)
+├── quickstart.sh           # 全新 Linux 主机一键部署(装 Docker→克隆→替换占位符→起 db+web)
 ├── deploy_fnos.py          # 一键上传+构建到飞牛 NAS(需你改 SSH 凭据)
 ├── web/                    # web 镜像:Dockerfile / nginx / start.sh / Zend+php.ini
 ├── game/                   # game 镜像:Dockerfile / entrypoint.sh / start.sh

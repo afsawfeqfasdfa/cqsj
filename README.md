@@ -30,6 +30,7 @@
 ```
 data-docker/
 ├── docker-compose.yml      # 编排三服务
+├── quickstart.sh           # 全新 Linux 主机一键部署: 装 Docker → 克隆 → 替换占位符 → 起 db+web
 ├── bootstrap.sh            # 历史一次性拉取工具(生成 build/ 用),新部署不需要跑
 ├── web/                    # web 镜像: Dockerfile / nginx / 启动脚本 / Zend+php.ini 静态快照
 ├── game/                   # game 镜像: Dockerfile / entrypoint
@@ -40,6 +41,15 @@ data-docker/
 ## 使用步骤(在部署主机上)
 
 > **完整步骤请看 [DEPLOY.md](DEPLOY.md)。** 下面的 `bootstrap.sh` 是历史工具,**新部署不需要跑**。
+
+### 一键部署(推荐,仅网站 + 数据库)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/afsawfeqfasdfa/cqsj/main/quickstart.sh | sudo bash
+```
+
+须为 **Linux x86_64**;`game` 用 `network_mode: host`、`web` 用 `pid: "host"`,
+Windows / macOS 的 Docker Desktop 不支持,会跑不起来。
 
 1. 该主机需满足:已安装 Docker(含 compose v2)。
 2. 运行时(PHP/Nginx/依赖库)、GM 站代码、初始化 SQL **已经全部在本仓库 `build/` 里**,
