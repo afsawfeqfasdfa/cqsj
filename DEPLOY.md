@@ -281,6 +281,42 @@ docker logs -f cqsj_game      # 看游戏服启动日志
 2. **客户端 `defServerList.json`** 要把网关指向 `<宿主机IP>:20020`(与 `GAME_HOST_IP` 一致)。
 3. **防火墙放行** `20010-20059` 等游戏端口,以及 `1515`。
 
+### 5.4 CentOS 7 一键部署(`deploy_centos7.sh`)
+
+如果你手上有一台**原始的裸机部署机**(宝塔 nginx + PHP5.6 + MySQL5.6 + `/data/sbin` 游戏服),
+可以先用备份脚本把它的东西打包,再用 `deploy_centos7.sh` 在任意一台**裸 CentOS 7** 上还原:
+
+```bash
+# 1) 备份源机(在能 SSH 到源机的机器上运行, 产出 194_*.tgz)
+#    见仓库 README 的 backup194 流程, 产出物:
+#      194_sbin.tgz / 194_wwwroot_game.tgz / 194_php56.tgz / 194_nginx.tgz
+#      194_zend.tgz / 194_libmysql.tgz / 194_db.sql.gz
+
+# 2) 在目标 CentOS 7 上一键还原(不用 Docker)
+sudo bash deploy_centos7.sh --bare 192.168.1.100 'YourDbPass'
+
+# 3) 或走 Docker 三服务
+sudo bash deploy_centos7.sh --docker 192.168.1.100 'YourDbPass'
+
+# 素材不在本地时, 直接从源机现拉
+sudo bash deploy_centos7.sh --bare 192.168.1.100 'Pass' --src root@192.168.50.194
+```
+
+两种模式的区别:
+
+| | `--bare` 裸机 | `--docker` 容器 |
+|---|---|---|
+| 依赖 | 直接 yum 装运行时,复刻原机 | 装 Docker 后 `docker compose up` |
+| 适用 | 想完全还原原机环境、目标机不便跑 Docker | 想要隔离、便于迁移/重建 |
+| 游戏服 | 直接跑在宿主,配 systemd `cqsj-game` | 跑在容器里(host 网络) |
+
+脚本会自动做的事里,**最关键是替换写死的源机 IP**(网关/会话配置、version.php、
+`games__/login/localIP.txt`、`gm/user/config.php`),否则客户端拿到的还是旧机器地址。
+
+> 两个容易漏的素材:**ZendGuardLoader.so**(`/usr/local/zend/php56/`,GM 站代码是 Zend 加密的)
+> 和 **libmysqlclient.so.18**(NameServer 依赖,CentOS 7 默认只有 `.so.20`)。
+> 只拷 `/data/sbin` 和网站目录是不够的。
+
 ---
 
 ## 6. 四区端口方案(游戏服配置里已固化)
