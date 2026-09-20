@@ -111,22 +111,25 @@ ph_value() {
   esac
 }
 
-if command -v perl >/dev/null 2>&1; then
-  PH_LIST="$(grep -rhoE '<<[A-Za-z0-9_]+>>' --include='*.yml' --include='*.php' --include='*.lua' \
-             --include='*.xml' --include='*.sh' --include='*.sql' --include='*.py' --include='*.conf' \
-             --include='*.json' . 2>/dev/null | sort -u)"
-  FILES="$(grep -rlE '<<[A-Za-z0-9_]+>>' --include='*.yml' --include='*.php' --include='*.lua' \
-           --include='*.xml' --include='*.sh' --include='*.sql' --include='*.py' --include='*.conf' \
-           --include='*.json' . 2>/dev/null)"
+# 注意: set -e 下 `VAR=$(grep ...)` 在无匹配时会让 grep 返回 1 从而终止脚本,
+# 所以所有 grep 都要 `|| true`; 且 FILES 为空时必须跳过, 否则 perl 会去读 stdin 卡死。
+INC="--include=*.yml --include=*.php --include=*.lua --include=*.xml --include=*.sh"
+INC="$INC --include=*.sql --include=*.py --include=*.conf --include=*.json"
+
+PH_LIST="$(grep -rhoE '<<[A-Za-z0-9_]+>>' $INC . 2>/dev/null | sort -u || true)"
+FILES="$(grep -rlE '<<[A-Za-z0-9_]+>>' $INC . 2>/dev/null || true)"
+
+if [ -z "$PH_LIST" ] || [ -z "$FILES" ]; then
+  echo "    没有找到 <<...>> 占位符(可能已预先替换过) -> 跳过替换"
+elif command -v perl >/dev/null 2>&1; then
   for ph in $PH_LIST; do
-    v="$(ph_value "${ph#<<}" )"
+    v="$(ph_value "${ph#<<}")"
     v="${v%>>}"
     PH="$ph" VAL="$v" perl -pi -e 's/\Q$ENV{PH}\E/$ENV{VAL}/g' $FILES
   done
+  echo "    已替换 ${PH_LIST//$'\n'/ } "
 else
   # 无 perl 时退回 sed(密码里别带 & | 字符)
-  FILES="$(grep -rl '<<' --include='*.yml' --include='*.php' --include='*.lua' --include='*.xml' \
-           --include='*.sh' --include='*.sql' --include='*.py' --include='*.conf' --include='*.json' .)"
   sed -i -e "s|<<LAN_IP>>|$IP|g" -e "s|<<GAME_PUBLIC_IP>>|$IP|g" -e "s|<<GAME_DOMAIN>>|$IP|g" \
       -e "s|<<CONTACT_DOMAIN>>|$IP|g" -e "s|<<SMS_GATEWAY_IP>>|$IP|g" \
       -e "s|<<DB_OR_GM_PASSWORD>>|$PW|g" -e "s|<<GAME_DB_PASSWORD>>|$PW|g" \
@@ -137,8 +140,7 @@ else
       -e "s|<<SSH_USER>>|root|g" -e "s|<<SSH_PORT>>|22|g" $FILES
 fi
 
-LEFT="$(grep -rhoE '<<[A-Za-z0-9_]+>>' --include='*.yml' --include='*.php' --include='*.lua' \
-        --include='*.xml' --include='*.sh' --include='*.sql' --include='*.py' . 2>/dev/null | sort -u | tr '\n' ' ')"
+LEFT="$(grep -rhoE '<<[A-Za-z0-9_]+>>' $INC . 2>/dev/null | sort -u | tr '\n' ' ' || true)"
 echo "    剩余未替换占位符: ${LEFT:-无}"
 
 # ---------- 5. 避开已存在的 cqsj(容器名/端口冲突时自动顺延) ----------
