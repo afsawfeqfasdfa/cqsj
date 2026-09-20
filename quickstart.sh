@@ -87,8 +87,15 @@ if [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
 elif [ -d "$INSTALL_DIR/.git" ]; then
   git -C "$INSTALL_DIR" pull --ff-only || true
 else
-  git clone --depth 1 "$REPO_URL" "$INSTALL_DIR" \
-    || { echo "克隆失败: 检查网络, 或先把仓库解压到 $INSTALL_DIR 再重跑(离线模式)"; exit 1; }
+  # HTTP/1.1: GitHub 走 HTTP/2 时常报 err 8 "stream was not closed cleanly", 强制 1.1 稳定得多
+  ok=""
+  for i in 1 2 3; do
+    echo "    克隆尝试 $i/3 (HTTP/1.1) ..."
+    if git -c http.version=HTTP/1.1 clone --depth 1 "$REPO_URL" "$INSTALL_DIR"; then ok=1; break; fi
+    rm -rf "$INSTALL_DIR"      # 清掉半成品再重试
+    sleep 2
+  done
+  [ -n "$ok" ] || { echo "克隆失败: 检查网络, 或先把仓库解压到 $INSTALL_DIR 再重跑(离线模式)"; exit 1; }
 fi
 cd "$INSTALL_DIR"
 
