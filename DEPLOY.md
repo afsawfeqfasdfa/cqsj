@@ -145,8 +145,15 @@ git clone --depth 1 https://github.com/afsawfeqfasdfa/cqsj.git
 cd cqsj
 ```
 
-> `git clone` 不通时:在电脑浏览器打开仓库页 → `Code` → `Download ZIP`,
-> 用飞牛「文件管理」上传到 `/vol1/docker` 并解压,目录改名为 `cqsj` 即可,后续命令一样。
+> `git clone` 不通时(国内网络常见 `HTTP/2 stream ... err 8`):在电脑浏览器打开仓库页 →
+> `Code` → `Download ZIP`,用飞牛「文件管理」上传到 `/vol1/docker` 并解压,
+> 目录改名为 `cqsj` 即可(走内网,比 GitHub 快得多),后续命令一样。
+>
+> ⚠️ **ZIP 解压会丢执行位**。解压后必须先补,否则 `cqsj_web` 起不来
+> (`exec: "/start.sh": permission denied`,因为 compose 把 `web/start.sh` 挂进容器当入口):
+> ```bash
+> cd /vol1/docker/cqsj && find . -name '*.sh' -exec chmod +x {} \;
+> ```
 
 **第 2 步 · 替换占位符(手动版)**
 
