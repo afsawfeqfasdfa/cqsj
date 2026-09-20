@@ -79,12 +79,16 @@ fi
 docker version >/dev/null 2>&1 || { echo "Docker 未正常运行,请检查服务"; exit 1; }
 docker compose version >/dev/null 2>&1 || { echo "缺少 Docker Compose v2 插件"; exit 1; }
 
-# ---------- 3. 克隆仓库 ----------
+# ---------- 3. 获取代码 ----------
 echo "==> [2/5] 获取代码 ..."
-if [ ! -d "$INSTALL_DIR/.git" ]; then
-  git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
-else
+# 离线模式: 目录里已经有 docker-compose.yml(比如面板上传 zip 解压的), 直接用, 不联网
+if [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
+  echo "    检测到 $INSTALL_DIR 已有工程 -> 离线模式, 跳过克隆"
+elif [ -d "$INSTALL_DIR/.git" ]; then
   git -C "$INSTALL_DIR" pull --ff-only || true
+else
+  git clone --depth 1 "$REPO_URL" "$INSTALL_DIR" \
+    || { echo "克隆失败: 检查网络, 或先把仓库解压到 $INSTALL_DIR 再重跑(离线模式)"; exit 1; }
 fi
 cd "$INSTALL_DIR"
 
