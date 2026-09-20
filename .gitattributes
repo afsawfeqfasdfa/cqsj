@@ -1,0 +1,6 @@
+# 所有 shell 脚本在任何平台都强制 LF —— CRLF 的 \r 会被 bash 当成命令的一部分,
+# 表现为 "set: pipefail: invalid option name" / "/start.sh: bad interpreter"。
+*.sh text eol=lf
+quickstart.sh text eol=lf
+bootstrap.sh text eol=lf
+deploy_centos7.sh text eol=lf
